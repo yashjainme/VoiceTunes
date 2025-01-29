@@ -7,6 +7,9 @@ export interface VideoItem {
     haveUpvoted: boolean;
     url?: string;
     
+
+  
+    
   }
   
   export interface Stream {
