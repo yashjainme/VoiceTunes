@@ -37,8 +37,11 @@ export async function POST(req: NextRequest) {
         }
 
         const extractedId = data.url.split("?v=")[1];
-        const videoDetails = await youtubesearchapi.GetVideoDetails(extractedId);
+       
         
+        console.log("************************************")
+        const videoDetails = await youtubesearchapi.GetVideoDetails(extractedId);
+        // console.log(videoDetails)
         // Sort thumbnails once and get required URLs
         const thumbnails = videoDetails.thumbnail.thumbnails;
         const lastIndex = thumbnails.length - 1;

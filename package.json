@@ -13,6 +13,7 @@
     "lucide-react": "^0.451.0",
     "next": "14.2.7",
     "next-auth": "^4.24.7",
+    "razorpay": "^2.9.5",
     "react": "^18",
     "react-dom": "^18",
     "react-lite-youtube-embed": "^2.4.0",

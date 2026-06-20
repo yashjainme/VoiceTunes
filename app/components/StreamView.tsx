@@ -1,5 +1,6 @@
 
 
+
 // "use client"
 
 // import React, { useState, useEffect } from 'react';
@@ -14,11 +15,13 @@
 // import { VideoItem, CurrentVidInterface, StreamViewProps } from './StreamComp/streamTypes';
 // import { signIn, useSession } from 'next-auth/react';
 // import { useRouter } from 'next/navigation';
+// import { PriorityQueueCard } from './StreamComp/PriorityQueueCard';
 
 // const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false }) => {
 //   const { data: session, status } = useSession();
 //   const router = useRouter();
 //   const [queue, setQueue] = useState<VideoItem[]>([]);
+//   const [priorityQueue, setPriorityQueue] = useState<VideoItem[]>([]);
 //   const [currentVideo, setCurrentVideo] = useState<CurrentVidInterface | null>(null);
 //   const REFRESH_INTERVAL_MS = 5 * 1000;
 
@@ -32,10 +35,16 @@
 //         thumbnail: stream.smallImg,
 //         votes: stream.upvotes || 0,
 //         haveUpvoted: stream.haveUpvoted,
+//         paidAmount: stream.paidAmount,
+//         isPriority: !!stream.paidAmount,
 //       }));
-      
-//       streams.sort((a: any, b: any) => b.votes - a.votes);
-//       setQueue(streams);
+
+//       // Separate regular and priority queues
+//       const regular = streams.filter((s: any) => !s.isPriority).sort((a: any, b: any) => b.votes - a.votes);
+//       const priority = streams.filter((s: any) => s.isPriority).sort((a: any, b: any) => b.paidAmount! - a.paidAmount!);
+
+//       setQueue(regular);
+//       setPriorityQueue(priority);
 
 //       if (!currentVideo && res.data.activeStream) {
 //         setCurrentVideo(res.data.activeStream);
@@ -47,58 +56,65 @@
 //   };
 
 //   const toggleVote = async (id: string, currentVote: boolean) => {
-//     // Optimistically update the UI
-//     setQueue((prevQueue) =>
-//       prevQueue.map((item) =>
-//         item.id === id
-//           ? {
-//               ...item,
-//               votes: currentVote ? item.votes - 1 : item.votes + 1,
-//               haveUpvoted: !currentVote,
-//             }
-//           : item
-//       ).sort((a, b) => b.votes - a.votes)
-//     );
-  
-//     try {
-//       // Make the actual API call
-//       if (currentVote) {
-//         await axios.post('/api/streams/downvote', { streamId: id });
-//       } else {
-//         await axios.post('/api/streams/upvote', { streamId: id });
-//       }
-//     } catch (error) {
-//       console.error('Error toggling vote:', error);
-//       toast.error('Failed to update vote.');
-  
-//       // Revert the optimistic update on error
-//       setQueue((prevQueue) =>
-//         prevQueue.map((item) =>
-//           item.id === id
-//             ? {
-//                 ...item,
-//                 votes: currentVote ? item.votes + 1 : item.votes - 1,
-//                 haveUpvoted: currentVote,
-//               }
-//             : item
-//         ).sort((a, b) => b.votes - a.votes)
-//       );
-//     }
-//   };
-  
+//         // Optimistically update the UI
+//         setQueue((prevQueue) =>
+//           prevQueue.map((item) =>
+//             item.id === id
+//               ? {
+//                   ...item,
+//                   votes: currentVote ? item.votes - 1 : item.votes + 1,
+//                   haveUpvoted: !currentVote,
+//                 }
+//               : item
+//           ).sort((a, b) => b.votes - a.votes)
+//         );
+      
+//         try {
+//           // Make the actual API call
+//           if (currentVote) {
+//             await axios.post('/api/streams/downvote', { streamId: id });
+//           } else {
+//             await axios.post('/api/streams/upvote', { streamId: id });
+//           }
+//         } catch (error) {
+//           console.error('Error toggling vote:', error);
+//           toast.error('Failed to update vote.');
+      
+//           // Revert the optimistic update on error
+//           setQueue((prevQueue) =>
+//             prevQueue.map((item) =>
+//               item.id === id
+//                 ? {
+//                     ...item,
+//                     votes: currentVote ? item.votes + 1 : item.votes - 1,
+//                     haveUpvoted: currentVote,
+//                   }
+//                 : item
+//             ).sort((a, b) => b.votes - a.votes)
+//           );
+//         }
+//       };
 
-//   const handlePlayNext = async () => {
+//   const handlePlayNext = async (isPriority: boolean = false) => {
 //     try {
-//       const res = await axios.get(`/api/streams/playnext`);
+//       const res = await axios.get(`/api/streams/playnext?isPriority=${isPriority}`);
 //       const nextVideo = res.data.stream;
 
 //       if (nextVideo) {
 //         setCurrentVideo(nextVideo);
-//         setQueue((prevQueue) => prevQueue.filter((video) => video.id !== nextVideo.id));
+//         if (isPriority) {
+//           setPriorityQueue(prev => prev.filter(video => video.id !== nextVideo.id));
+//         } else {
+//           setQueue(prev => prev.filter(video => video.id !== nextVideo.id));
+//         }
 //         toast.success('Playing next video!');
 //       } else {
-//         setCurrentVideo(null);
-//         toast.info('No more videos in the queue.');
+//         if (isPriority) {
+//           toast.info('No more priority videos in the queue.');
+//         } else {
+//           setCurrentVideo(null);
+//           toast.info('No more videos in the queue.');
+//         }
 //       }
 //     } catch (error) {
 //       console.error('Error playing next video:', error);
@@ -141,7 +157,7 @@
 //           <div className="lg:col-span-2 space-y-6">
 //             <StreamPlayer 
 //               currentVideo={currentVideo} 
-//               onPlayNext={handlePlayNext} 
+//               onPlayNext={() => handlePlayNext(false)} 
 //             />
             
 //             <VideoSubmissionCard 
@@ -151,11 +167,16 @@
 //           </div>
 
 //           <div className="lg:col-span-1 space-y-6">
+//             <PriorityQueueCard 
+//               priorityQueue={priorityQueue}
+//               onPlayNext={() => handlePlayNext(true)}
+//             />
+            
 //             <VideoQueueCard 
 //               queue={queue}
 //               playVideo={playVideo}
 //               onToggleVote={toggleVote}
-//               onPlayNext={handlePlayNext}
+//               onPlayNext={() => handlePlayNext(false)}
 //             />
             
 //             <ShareStreamCard creatorId={creatorId} />
@@ -169,45 +190,6 @@
 // };
 
 // export default StreamView;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -233,6 +215,7 @@ import { VideoItem, CurrentVidInterface, StreamViewProps } from './StreamComp/st
 import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { PriorityQueueCard } from './StreamComp/PriorityQueueCard';
+import { initializePayment } from '../utils/razorpay'; // Import the payment utility
 
 const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false }) => {
   const { data: session, status } = useSession();
@@ -240,8 +223,10 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
   const [queue, setQueue] = useState<VideoItem[]>([]);
   const [priorityQueue, setPriorityQueue] = useState<VideoItem[]>([]);
   const [currentVideo, setCurrentVideo] = useState<CurrentVidInterface | null>(null);
+  const [isStreamer, setIsStreamer] = useState(false);
   const REFRESH_INTERVAL_MS = 5 * 1000;
 
+ 
   const refreshStreams = async () => {
     try {
       const res = await axios.get(`/api/streams?creatorId=${creatorId}`);
@@ -253,16 +238,15 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
         votes: stream.upvotes || 0,
         haveUpvoted: stream.haveUpvoted,
         paidAmount: stream.paidAmount,
-        isPriority: !!stream.paidAmount,
+        isPriority: !!stream.payment?.status === 'COMPLETED',
       }));
-
-      // Separate regular and priority queues
+  
       const regular = streams.filter((s: any) => !s.isPriority).sort((a: any, b: any) => b.votes - a.votes);
-      const priority = streams.filter((s: any) => s.isPriority).sort((a: any, b: any) => b.paidAmount! - a.paidAmount!);
-
+      const priority = streams.filter((s: any) => s.isPriority).sort((a: any, b: any) => b.paidAmount - a.paidAmount);
+  
       setQueue(regular);
       setPriorityQueue(priority);
-
+  
       if (!currentVideo && res.data.activeStream) {
         setCurrentVideo(res.data.activeStream);
       }
@@ -272,7 +256,34 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
     }
   };
 
-  const toggleVote = async (id: string, currentVote: boolean) => {
+  const handleInitiatePayment = async (videoId: string) => {
+    if (!session?.user) {
+      toast.error('Please sign in to make a priority request');
+      return;
+    }
+  
+    try {
+      const result = await initializePayment(
+        videoId,
+        100, // Amount in INR
+        session.user.id,
+        session.user.email!
+      );
+  
+      if (result.success) {
+        toast.success('Payment successful! Your request is now prioritized.');
+        refreshStreams();
+      } else {
+        toast.error(result.error || 'Payment failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast.error('Payment failed. Please try again later.');
+    }
+  };
+
+
+    const toggleVote = async (id: string, currentVote: boolean) => {
         // Optimistically update the UI
         setQueue((prevQueue) =>
           prevQueue.map((item) =>
@@ -312,32 +323,28 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
         }
       };
 
-  const handlePlayNext = async (isPriority: boolean = false) => {
-    try {
-      const res = await axios.get(`/api/streams/playnext?isPriority=${isPriority}`);
-      const nextVideo = res.data.stream;
-
-      if (nextVideo) {
-        setCurrentVideo(nextVideo);
-        if (isPriority) {
-          setPriorityQueue(prev => prev.filter(video => video.id !== nextVideo.id));
-        } else {
-          setQueue(prev => prev.filter(video => video.id !== nextVideo.id));
+      const handlePlayNext = async (isPriority: boolean = false) => {
+        try {
+          const res = await axios.get(`/api/streams/playnext?isPriority=${isPriority}`);
+          const nextVideo = res.data.stream;
+      
+          if (nextVideo) {
+            setCurrentVideo(nextVideo);
+            if (isPriority) {
+              setPriorityQueue(prev => prev.filter(video => video.id !== nextVideo.id));
+            } else {
+              setQueue(prev => prev.filter(video => video.id !== nextVideo.id));
+            }
+            toast.success('Playing next video!');
+          } else {
+            toast.info(isPriority ? 'No more priority videos.' : 'No more videos in queue.');
+          }
+        } catch (error) {
+          console.error('Error playing next video:', error);
+          toast.error('Failed to play next video. Try again.');
         }
-        toast.success('Playing next video!');
-      } else {
-        if (isPriority) {
-          toast.info('No more priority videos in the queue.');
-        } else {
-          setCurrentVideo(null);
-          toast.info('No more videos in the queue.');
-        }
-      }
-    } catch (error) {
-      console.error('Error playing next video:', error);
-      toast.error('Failed to play next video. Try again.');
-    }
-  };
+      };
+      
 
   useEffect(() => {
     if (creatorId && status === "authenticated") {
@@ -363,7 +370,8 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
     </div>
   );
 
-  // Render main content if authenticated
+  
+
   const renderMainContent = () => (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-gray-100">
       <Header />
@@ -387,6 +395,8 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
             <PriorityQueueCard 
               priorityQueue={priorityQueue}
               onPlayNext={() => handlePlayNext(true)}
+              onInitiatePayment={handleInitiatePayment}
+              isStreamer={isStreamer}
             />
             
             <VideoQueueCard 
@@ -407,5 +417,3 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
 };
 
 export default StreamView;
-
-
