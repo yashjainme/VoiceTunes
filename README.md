@@ -1,157 +1,217 @@
 # 🎵 Votetunes
 
-[![Next.js](https://img.shields.io/badge/Next.js-14.2.7-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
-[![React](https://img.shields.io/badge/React-18-blue?style=for-the-badge&logo=react)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-[![Prisma](https://img.shields.io/badge/Prisma-5.20-blueviolet?style=for-the-badge&logo=prisma)](https://www.prisma.io/)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
-[![Razorpay](https://img.shields.io/badge/Razorpay-Integration-blue?style=for-the-badge&logo=razorpay)](https://razorpay.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript)](https://typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma)](https://www.prisma.io/)
+[![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?style=for-the-badge&logo=mysql)](https://www.mysql.com/)
+[![Razorpay](https://img.shields.io/badge/Razorpay-Payments-0C2451?style=for-the-badge&logo=razorpay)](https://razorpay.com/)
+[![NextAuth](https://img.shields.io/badge/NextAuth-Auth-7C3AED?style=for-the-badge)](https://next-auth.js.org/)
 
-**Votetunes** is a state-of-the-art collaborative stream queue manager designed for creators, streamers, and communities. It allows users to democratically curate music and video queues in real time through upvotes, downvotes, and prioritized paid requests.
+> **Let your audience decide what plays next — or pay to skip the queue.**
+
+Votetunes is a **real-time collaborative music queue** for live streamers. Your audience can vote on songs in the regular queue, or pay via Razorpay to jump straight to the top of a priority lane. As a creator, you control what plays.
 
 ---
 
-## 📐 System Architecture
+## 🔑 Two Roles
 
-Votetunes is built with a highly responsive, modern full-stack architecture leveraging Next.js App Router and Prisma ORM.
+| Role | How to Access | What They Can Do |
+|------|--------------|-----------------|
+| **Creator** | Log in → Dashboard (`/dashboard`) | Submit songs, advance the queue (priority & regular), share their stream link |
+| **Audience** | Shared link → `/creator/<id>` | Submit songs, vote up/down in the regular queue, make priority payment requests |
 
-```mermaid
-graph TD
-    %% Clients
-    User[👤 Fan/Viewer] -->|Submit/Vote/Pay| Client[💻 Next.js Client - App Router]
-    Creator[🎙️ Streamer] -->|Play/Control| Client
-    
-    %% Next.js API Routes / Auth / Razorpay
-    Client -->|Google OAuth| NextAuth[🔒 NextAuth.js]
-    Client -->|REST API Requests| API[🌐 API Routes]
-    Client -->|Initiate Payment| Razorpay[💳 Razorpay Gateway]
-    
-    %% Backend Services
-    API -->|Validation & Parsing| Zod[🛠️ Zod Validator]
-    API -->|Fetch Video Data| YT[📺 YouTube Search API]
-    Razorpay -->|Callback Verification| API
-    
-    %% Database Layer
-    API -->|ORM queries| Prisma[💎 Prisma Client]
-    Prisma -->|Persistence| DB[(🛢️ MySQL Database)]
-    
-    %% Real-time / Frontend State
-    Client -->|Polled Updates| API
-    Client -->|Optimistic Updates| UIState[⚡ React Local State]
+> **Share your stream:** From the Dashboard, click the **Share Stream** button — it copies `/creator/<your-user-id>` to send to your audience.
+
+---
+
+## 🏗️ Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│                     Browser                       │
+│                                                  │
+│  ┌────────────┐   ┌──────────────┐              │
+│  │  Creator   │   │   Audience   │              │
+│  │ (Dashboard)│   │ (/creator/*) │              │
+│  └─────┬──────┘   └──────┬───────┘              │
+│        └─────────┬────────┘                      │
+│                  │  Next.js App Router            │
+└──────────────────┼──────────────────────────────-┘
+                   │
+        ┌──────────▼───────────┐
+        │   API Routes (/api)  │
+        │                      │
+        │  GET  /streams       │  ← polls every 5s
+        │  POST /streams       │  ← add to queue
+        │  POST /streams/upvote│
+        │  POST /streams/downvote
+        │  GET  /streams/playnext?isPriority=true|false
+        │  POST /create-order  │  ← Razorpay order
+        │  POST /verify-payment│  ← marks COMPLETED
+        └──────────┬───────────┘
+                   │  Prisma ORM
+        ┌──────────▼───────────┐
+        │       MySQL          │
+        │                      │
+        │  User                │
+        │  Stream              │
+        │  Payment (optional)  │
+        │  CurrentStream       │
+        │  Upvote              │
+        └──────────────────────┘
+              ▲ verify
+              │
+        ┌─────┴──────┐
+        │  Razorpay  │
+        └────────────┘
 ```
 
-### Key Architectural Concepts
-- **Optimistic UI Updates**: Voting interactions instantly recalculate client-side order and reflect updates before the server confirmation returns, assuring a zero-latency feel.
-- **Double Queue Engine**: The queue is split into a **Priority Queue** (Razorpay transaction verified) and a **Standard Queue** (sorted by net upvotes).
-- **Prisma Schema Isolation**: Built-in support for multiple entities including `User`, `Stream` (video payload), `Payment`, `Upvote`, and `Space` (rooms).
+### Dual-Lane Queue System
+
+```
+ INCOMING SONGS
+       │
+       ├─── paid (Razorpay completed) ──► 💰 PRIORITY LANE
+       │                                   sorted by: amount DESC, time ASC
+       └─── free ────────────────────────► 🗳️ REGULAR LANE
+                                            sorted by: votes DESC
+                                            
+PLAY NEXT (creator action or auto on song end):
+  if priority lane is not empty → play top priority
+  else                          → play top of regular lane
+```
 
 ---
 
-## ⚡ Key Features
+## ✅ Current Features
 
-### 🌟 Present Features
-* **Google Authentication**: Seamless user sign-in powered by NextAuth.
-* **YouTube Stream Extraction**: Input YouTube URLs which are parsed, verified via Zod, and resolved using the YouTube API to fetch titles and thumbnails automatically.
-* **Democratic Voting Engine**: Upvote or downvote queue items to dynamically update the playlist priority.
-* **Paid Stream Prioritization**: Direct Razorpay integration allowing users to pay (e.g., ₹100 INR) to push a request directly to the streamer's Priority Queue.
-* **Streamer Dashboard & Guest View**: Dedicated dashboard controls for creators to play, pause, skip, and manage streams, alongside guest views for viewers to submit and vote.
-* **Automatic Queue Transition**: Seamless playback transitions that automatically pull the next stream when the current one finishes.
-* **Premium Glassmorphism Design**: High-end UI with dark mode gradients, micro-interactions, responsive sidebars, and elegant toast notifications.
+### For Creators
+- 🎛️ **Creator Dashboard** — your personal stream hub at `/dashboard`
+- ▶️ **Manual queue control** — skip to next video from either lane
+- ⭐ **Priority-first auto-play** — when a video ends, priority lane drains first automatically
+- 📤 **One-click share** — share your audience link from the dashboard
+- 🏷️ **Creator badge** — visual indicator showing you're the owner of the stream
 
-### 🚀 Future Roadmap (Under Development)
-* **Real-time WebSockets / SSE**: Replace 5-second polling with instantaneous pub/sub updates for queue changes and votes.
-* **Spotify Integration**: Full support for Spotify tracks, playlists, and playback controls.
-* **Super Chat Overlays**: OBS-friendly transparent browser sources for streamers to project active streams and donation highlights directly on-screen.
-* **Themed Spaces**: Customize queue permissions (e.g., max submissions per user, custom vote weighting, and customizable pay-to-play tiers).
+### For the Audience
+- 🔗 **Shareable stream URL** — `/creator/<id>` for audience to join
+- 🎵 **Song submission** — paste any YouTube URL to add to the queue
+- 🗳️ **Democratic voting** — upvote/downvote with optimistic UI updates
+- 💰 **Priority requests** — pay ₹100–₹1000 via Razorpay to jump to the top
+- 👑 **Priority queue visibility** — see the full paid queue sorted by amount
 
----
-
-## 🛠️ Tech Stack & Dependencies
-
-- **Framework**: [Next.js 14 (App Router)](https://nextjs.org/)
-- **Database ORM**: [Prisma Client](https://www.prisma.io/) + [MySQL](https://www.mysql.com/)
-- **Authentication**: [NextAuth.js](https://next-auth.js.org/) (Google OAuth provider)
-- **Payment Gateway**: [Razorpay SDK](https://razorpay.com/)
-- **Validation**: [Zod](https://zod.dev/)
-- **UI & Iconography**: [Tailwind CSS](https://tailwindcss.com/) + [Lucide React](https://lucide.dev/)
-- **Embedded Player**: [React Lite YouTube Embed](https://github.com/ibrahimcesar/react-lite-youtube-embed) + [YT Player](https://github.com/feross/yt-player)
+### Platform
+- 🔐 **Google OAuth** via NextAuth.js
+- 🔄 **Auto-refresh** — queue polls every 5 seconds without page reload
+- 🎬 **Embedded YouTube player** via `yt-player` with autoplay
+- 💸 **Payments** — Razorpay checkout → server-side verification → DB update
 
 ---
 
-## 🚀 Getting Started
+## 💸 Where Does the Money Go?
 
-### 📋 Prerequisites
-Ensure you have the following installed on your machine:
-- **Node.js** (v18.x or later)
-- **MySQL Database Server**
-- **npm** or **yarn**
+All payments via Razorpay flow **directly into the Razorpay merchant account** linked to the API keys in your `.env`:
 
-### 📦 Installation
+```
+RAZORPAY_KEY_ID       → the merchant's account
+RAZORPAY_KEY_SECRET   → used to sign & verify webhooks
+```
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd project
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Configure Environment Variables:**
-   Create a `.env` file in the root directory (make sure not to commit it—it is ignored under `.gitignore`):
-   ```env
-   # Database connection
-   DATABASE_URL="mysql://<username>:<password>@localhost:3306/<db_name>"
-
-   # NextAuth details
-   NEXTAUTH_SECRET="your-random-32-char-secret"
-   NEXTAUTH_URL="http://localhost:3000"
-
-   # Google Client Credentials (for Authentication)
-   GOOGLE_CLIENT_ID="your-google-client-id"
-   GOOGLE_CLIENT_SECRET="your-google-client-secret"
-
-   # Razorpay Credentials
-   RAZORPAY_KEY_ID="your-razorpay-key-id"
-   RAZORPAY_KEY_SECRET="your-razorpay-key-secret"
-   ```
-
-4. **Initialize Database and Schema:**
-   Deploy the Prisma migration to your MySQL instance:
-   ```bash
-   npx prisma db push
-   ```
-
-5. **Start Dev Server:**
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) to view the application.
+If you self-host Votetunes you keep 100% of priority request revenue. A multi-tenant platform split (e.g. 80% creator / 20% platform) would require [Razorpay Route](https://razorpay.com/docs/payments/route/).
 
 ---
 
-## 📂 Project Structure
+## 🔮 Roadmap
 
-```text
+| Feature | Status |
+|---------|--------|
+| YouTube priority queue | ✅ Live |
+| Razorpay priority payments | ✅ Live |
+| Optimistic voting | ✅ Live |
+| Auto-play with priority-first logic | ✅ Live |
+| WebSocket / SSE real-time push | 🔧 Planned |
+| OBS browser-source overlay | 🔧 Planned |
+| Spotify integration | 🔧 Planned |
+| Multi-tenant creator accounts | 🔧 Planned |
+| Tipping without a song request | 🔧 Planned |
+
+---
+
+## 🛠️ Local Setup
+
+### 1. Clone & install
+```bash
+git clone https://github.com/yourname/votetunes.git
+cd votetunes
+npm install
+```
+
+### 2. Configure environment
+Create a `.env` file in the project root:
+```env
+DATABASE_URL="mysql://user:password@localhost:3306/votetunes"
+
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="your-secret-key"
+
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+
+NEXT_PUBLIC_RAZORPAY_KEY="rzp_test_xxxxxxxxxxxxx"
+RAZORPAY_KEY_SECRET="your-razorpay-secret"
+```
+
+### 3. Push the database schema
+```bash
+npx prisma db push
+```
+
+### 4. Run the dev server
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 📁 Project Structure
+
+```
+project/
 ├── app/
-│   ├── api/             # API handlers (auth, streams, payments, upvotes)
-│   ├── components/      # Reusable UI components (Appbar, StreamView, Header, etc.)
-│   ├── creator/         # Dynamic route for streamer page (/creator/[creatorId])
-│   ├── dashboard/       # Streamer host dashboard
-│   ├── lib/             # Database initialization (prisma client)
-│   ├── utils/           # Helper scripts (Razorpay handlers, text parsing)
-│   ├── globals.css      # Core tailwind setup and theme configs
-│   └── page.tsx         # App home / landing page
+│   ├── api/
+│   │   ├── streams/
+│   │   │   ├── route.ts          # GET list + POST add to queue
+│   │   │   ├── playnext/         # Advance queue (priority or regular)
+│   │   │   ├── upvote/           # Vote up
+│   │   │   └── downvote/         # Vote down
+│   │   ├── create-order/         # Razorpay order creation
+│   │   ├── verify-payment/       # Razorpay payment verification
+│   │   └── auth/                 # NextAuth route handler
+│   ├── components/
+│   │   ├── StreamView.tsx        # Main stream view (creator + audience)
+│   │   ├── Header.tsx            # Nav with auth state
+│   │   └── StreamComp/
+│   │       ├── StreamPlayer.tsx      # yt-player embed
+│   │       ├── VideoSubmissionCard.tsx  # Submit a song
+│   │       ├── PriorityQueueCard.tsx    # Paid priority lane
+│   │       ├── VideoQueueCard.tsx       # Regular voted lane
+│   │       ├── ShareStreamCard.tsx      # Share link button
+│   │       └── streamTypes.ts           # Shared TypeScript types
+│   ├── dashboard/                # Creator's personal stream page
+│   ├── creator/[creatorId]/      # Audience-facing stream page
+│   ├── lib/
+│   │   ├── auth.ts               # NextAuth config
+│   │   └── db.ts                 # Prisma client singleton
+│   └── utils/
+│       └── razorpay.ts           # Payment flow helper
 ├── prisma/
-│   ├── schema.prisma    # MySQL Database schema definitions
-│   └── migrations/      # Automated migration histories
-└── public/              # Static assets, logos, and icons
+│   └── schema.prisma             # MySQL schema
+└── .env                          # 🚫 gitignored
 ```
 
 ---
 
 ## 🛡️ License
 
-This project is licensed under the MIT License. Feel free to fork and customize!
+MIT — fork it, build on it, make it yours.

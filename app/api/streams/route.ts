@@ -10,6 +10,7 @@ import { prismaClient } from "@/app/lib/db";
 import youtubesearchapi from 'youtube-search-api'
 import { YT_REGEX } from "@/app/lib/utils";
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/lib/auth";
 
 // Move schema outside of function to avoid recreation on each request
 const CreateStreamSchema = z.object({
@@ -30,31 +31,37 @@ const DEFAULT_THUMBNAIL = "https://i.natgeofe.com/n/548467d8-c5f1-4551-9f58-6817
 
 export async function POST(req: NextRequest) {
     try {
+        // Auth check: only logged-in users can submit songs
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.email) return ERROR_RESPONSES.UNAUTHENTICATED;
+
         const data = CreateStreamSchema.parse(await req.json());
         
         if (!YT_REGEX.test(data.url)) {
             return ERROR_RESPONSES.WRONG_URL;
         }
 
+        // Find the actual submitter so addedBy is correct (audience ≠ creator)
+        const submitter = await prismaClient.user.findUnique({
+            where: { email: session.user.email },
+        });
+        if (!submitter) return ERROR_RESPONSES.UNAUTHENTICATED;
+
         const extractedId = data.url.split("?v=")[1];
-       
-        
-        console.log("************************************")
+
         const videoDetails = await youtubesearchapi.GetVideoDetails(extractedId);
-        // console.log(videoDetails)
-        // Sort thumbnails once and get required URLs
         const thumbnails = videoDetails.thumbnail.thumbnails;
         const lastIndex = thumbnails.length - 1;
         const bigImg = thumbnails[lastIndex].url ?? DEFAULT_THUMBNAIL;
         const smallImg = thumbnails.length > 1 ? thumbnails[lastIndex - 1].url : bigImg;
 
-        const streams = await prismaClient.stream.create({
+        const stream = await prismaClient.stream.create({
             data: {
                 url: data.url,
                 extractedId,
                 type: "Youtube",
-                userId: data.creatorId,
-                addedBy: data.creatorId,
+                userId: data.creatorId,   // the creator whose queue this belongs to
+                addedBy: submitter.id,    // the actual person who submitted it
                 title: videoDetails.title ?? "Can't Find Video",
                 smallImg,
                 bigImg
@@ -62,7 +69,7 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({ 
-            ...streams,
+            ...stream,
             hasUpvoted: false,
             upvotes: 0
         });
@@ -78,7 +85,7 @@ export async function GET(req: NextRequest) {
     if (!creatorId) return ERROR_RESPONSES.MISSING_CREATOR;
 
     try {
-        const session = await getServerSession();
+        const session = await getServerSession(authOptions);
         const user = await prismaClient.user.findFirst({
             where: {
                 email: session?.user?.email ?? ""
@@ -98,7 +105,8 @@ export async function GET(req: NextRequest) {
                     upvotes: {
                         where: { userId: user.id },
                         select: { id: true } // Only select what's needed
-                    }
+                    },
+                    payment: true
                 }
             }),
             prismaClient.currentStream.findFirst({
@@ -115,7 +123,8 @@ export async function GET(req: NextRequest) {
                 upvotes: _count.upvotes,
                 haveUpvoted: upvotes.length > 0
             })),
-            acStreams: activeStream
+            // activeStream = full CurrentStream row; activeStream.stream = the raw Stream (url, title, etc.)
+            activeStream: activeStream ?? null
         });
     } catch (e) {
         console.error(e);

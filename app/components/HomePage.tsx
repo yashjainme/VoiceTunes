@@ -1,13 +1,18 @@
+"use client";
+
 import { FC } from "react";
 import { Music, Users, BarChart2, ArrowRight } from "lucide-react";
 import Header from "./Header";
 import Footer from "./Footer";
 import Button from "./Button";
-import Input from "./Input";
 import FeatureCard from "./FeatureCard";
-import { Redirect } from "./Redirect";
+import { useSession, signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 const HomePage: FC = () => {
+  const { status } = useSession();
+  const router = useRouter();
+
   const features = [
     {
       Icon: Users,
@@ -26,33 +31,64 @@ const HomePage: FC = () => {
     }
   ];
 
+  const handleGetStarted = () => {
+    if (status === "authenticated") {
+      router.push("/dashboard");
+    } else {
+      signIn("google", { callbackUrl: "/dashboard" });
+    }
+  };
+
+  const handleLearnMore = () => {
+    document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-900 text-gray-100">
       <Header />
-      <Redirect/>
       
       <main className="flex-1">
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48 bg-gray-800">
-          <div className="container px-4 md:px-6 mx-auto">
-            <div className="flex flex-col items-center space-y-4 text-center">
-              <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl lg:text-6xl text-purple-400">
+        <section className="w-full py-20 md:py-32 lg:py-48 bg-gradient-to-b from-gray-900 to-gray-800 relative overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(168,85,247,0.1),transparent_50%)] pointer-events-none" />
+          <div className="container px-4 md:px-6 mx-auto relative z-10">
+            <div className="flex flex-col items-center space-y-6 text-center">
+              <div className="space-y-4 max-w-3xl">
+                <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl bg-gradient-to-r from-purple-400 via-purple-300 to-indigo-400 bg-clip-text text-transparent">
                   Let Your Fans Choose the Soundtrack
                 </h1>
-                <p className="mx-auto max-w-[700px] text-gray-400 md:text-xl">
-                  Votetunes is the revolutionary music streaming platform where your audience decides what plays next.
+                <p className="mx-auto max-w-[700px] text-gray-400 md:text-xl leading-relaxed">
+                  Votetunes is the revolutionary music streaming platform where your audience decides what plays next. Upvote, downvote, and support with paid requests.
                 </p>
               </div>
-              <div className="space-x-4">
-                <Button>Get Started</Button>
-                <Button variant="outline">Learn More</Button>
+              <div className="flex flex-wrap justify-center gap-4">
+                <Button 
+                  onClick={handleGetStarted}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-8 rounded-lg shadow-lg hover:shadow-purple-500/20 transition-all duration-200"
+                >
+                  {status === "authenticated" ? "Go to Dashboard" : "Get Started Now"}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleLearnMore}
+                  className="border-gray-600 text-gray-300 hover:text-white hover:bg-gray-800 py-3 px-8 rounded-lg transition-all duration-200"
+                >
+                  Learn More
+                </Button>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-gray-900">
+        <section id="features" className="w-full py-16 md:py-28 bg-gray-900 scroll-mt-16">
           <div className="container px-4 md:px-6 mx-auto">
+            <div className="text-center space-y-4 mb-16">
+              <h2 className="text-3xl font-bold tracking-tight md:text-4xl text-purple-450">
+                Designed for Modern Content Creators
+              </h2>
+              <p className="text-gray-400 max-w-xl mx-auto">
+                Engage your community, monetize priority streams, and deliver a democratic listening experience.
+              </p>
+            </div>
             <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
               {features.map((feature, index) => (
                 <FeatureCard key={index} {...feature} />
@@ -62,32 +98,28 @@ const HomePage: FC = () => {
         </section>
 
         {/* Refined CTA Section */}
-        <section className="w-full py-16 md:py-24 bg-gray-800">
+        <section id="about" className="w-full py-20 bg-gray-800 scroll-mt-16">
           <div className="container px-4 md:px-6 mx-auto">
             <div className="flex flex-col items-center space-y-6">
               <div className="text-center space-y-4">
-                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl text-purple-400">
+                <h2 className="text-3xl font-bold tracking-tight md:text-4xl text-purple-400">
                   Ready to Let Your Fans Take Control?
                 </h2>
                 <p className="mx-auto max-w-[600px] text-gray-400 md:text-xl">
-                  Join Votetunes today and revolutionize how your audience interacts with your music.
+                  Join Votetunes today and revolutionize how your audience interacts with your music stream.
                 </p>
               </div>
 
-              <div className="w-full max-w-md space-y-3">
-                <form className="flex flex-col sm:flex-row gap-3">
-                  <Input 
-                    placeholder="Enter your email" 
-                    type="email"
-                    className="flex-1"
-                  />
-                  <Button type="submit" className="whitespace-nowrap">
-                    Join Now
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </form>
-                <p className="text-xs text-gray-400 text-center">
-                  By signing up, you agree to our Terms & Conditions.
+              <div className="w-full max-w-md">
+                <Button 
+                  onClick={handleGetStarted}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-all duration-200"
+                >
+                  {status === "authenticated" ? "Enter the Space" : "Sign Up with Google"}
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+                <p className="text-xs text-gray-500 text-center mt-3">
+                  By joining, you agree to our standard terms & conditions.
                 </p>
               </div>
             </div>
