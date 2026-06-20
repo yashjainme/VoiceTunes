@@ -22,12 +22,19 @@ const Header: FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navLinks = [
-    { href: "/features", label: "Features" },
-    { href: "/pricing", label: "Pricing" },
-    { href: "/about", label: "About" },
-    { href: "/contact", label: "Contact" },
-  ];
+  const userId = (session?.user as any)?.id;
+
+  const navLinks = session
+    ? [
+        { href: "/", label: "Home" },
+        { href: "/dashboard", label: "Dashboard" },
+        ...(userId ? [{ href: `/creator/${userId}`, label: "My Stream" }] : []),
+      ]
+    : [
+        { href: "/", label: "Home" },
+        { href: "/#features", label: "Features" },
+        { href: "/dashboard", label: "Sign In" },
+      ];
 
   const handleToggleDropdown = () => {
     setDropdownOpen((prev) => !prev);

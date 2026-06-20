@@ -1,11 +1,13 @@
+
 import React, { useState } from 'react';
-import { Link as LinkIcon, Loader } from 'lucide-react';
+import { Link as LinkIcon, Loader, Crown } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import 'react-lite-youtube-embed/dist/LiteYouTubeEmbed.css';
-
+import { initializePayment } from '@/app/utils/razorpay';
 import { YT_REGEX } from '@/app/lib/utils';
+import { useSession } from 'next-auth/react';
 
 interface VideoSubmissionCardProps {
   creatorId: string;
@@ -13,11 +15,13 @@ interface VideoSubmissionCardProps {
 }
 
 export const VideoSubmissionCard: React.FC<VideoSubmissionCardProps> = ({ creatorId, onVideoAdded }) => {
+  const { data: session } = useSession();
   const [videoUrl, setVideoUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isPriority, setIsPriority] = useState(false);
+  const [amount, setAmount] = useState<number>(100); // Default amount in INR
 
   const getVideoId = (url: string) => {
-   
     const match = url.match(YT_REGEX);
     return match ? match[5] : null;
   };
@@ -40,7 +44,9 @@ export const VideoSubmissionCard: React.FC<VideoSubmissionCardProps> = ({ creato
       // First, get the latest queue state from the server
       const currentQueueResponse = await axios.get(`/api/streams?creatorId=${creatorId}`);
       const currentQueue = currentQueueResponse.data.streams;
-      const activeStream = currentQueueResponse.data.activeStream;
+      // activeStream is a CurrentStream row; the raw Stream lives at .stream
+      const activeStreamRow = currentQueueResponse.data.activeStream;
+      const activeStreamUrl = activeStreamRow?.stream?.url ?? null;
   
       // Check for duplicates in the latest server state
       const isDuplicate = currentQueue.some((stream: any) => {
@@ -48,7 +54,8 @@ export const VideoSubmissionCard: React.FC<VideoSubmissionCardProps> = ({ creato
         return streamVideoId === extractedId;
       });
   
-      const isCurrentlyPlaying = activeStream && getVideoId(activeStream.url) === extractedId;
+      const isCurrentlyPlaying =
+        activeStreamUrl && getVideoId(activeStreamUrl) === extractedId;
   
       if (isDuplicate || isCurrentlyPlaying) {
         toast.error('This video has already been added to your stream');
@@ -56,14 +63,35 @@ export const VideoSubmissionCard: React.FC<VideoSubmissionCardProps> = ({ creato
         return;
       }
   
-      // If no duplicate found, proceed to add the video
-      await axios.post('/api/streams', { 
+      // Add the video first
+      const response = await axios.post('/api/streams', { 
         creatorId, 
         url: videoUrl
       });
+
+      const streamId = response.data.id;
+
+      // If priority, handle payment
+      if (isPriority) {
+        const paymentResult = await initializePayment(
+          streamId,
+          amount,
+          (session?.user as any)?.id || creatorId,
+          session?.user?.email || 'user@example.com'
+        );
+
+        if (!paymentResult.success) {
+          // If payment fails, we should delete the stream
+          await axios.delete(`/api/streams/${streamId}`);
+          toast.error('Payment failed. Video was not added to queue.');
+          setLoading(false);
+          return;
+        }
+      }
   
       setVideoUrl('');
-      toast.success('Video added to queue!');
+      toast.success(isPriority ? 'Priority video added to queue!' : 'Video added to queue!');
+      setIsPriority(false);
       onVideoAdded();
   
     } catch (error) {
@@ -83,7 +111,7 @@ export const VideoSubmissionCard: React.FC<VideoSubmissionCardProps> = ({ creato
       <div className="p-4 border-b border-gray-700">
         <h2 className="text-xl font-semibold">Submit a Song</h2>
       </div>
-      <div className="p-4">
+      <div className="p-4 space-y-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
@@ -95,18 +123,55 @@ export const VideoSubmissionCard: React.FC<VideoSubmissionCardProps> = ({ creato
           <button
             disabled={loading}
             onClick={handleUrlSubmit}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`px-4 py-2 ${
+              isPriority 
+                ? 'bg-yellow-600 hover:bg-yellow-700' 
+                : 'bg-purple-600 hover:bg-purple-700'
+            } text-white rounded-lg transition-colors duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed min-w-[140px]`}
           >
             {loading ? (
               <Loader className="h-5 w-5 animate-spin" />
             ) : (
               <>
-                <LinkIcon className="h-4 w-4 mr-2" />
-                Add to Queue
+                {isPriority ? (
+                  <Crown className="h-4 w-4 mr-2" />
+                ) : (
+                  <LinkIcon className="h-4 w-4 mr-2" />
+                )}
+                {isPriority ? 'Add Priority' : 'Add to Queue'}
               </>
             )}
           </button>
         </div>
+
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isPriority}
+              onChange={(e) => setIsPriority(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+            />
+            <span className="text-sm text-gray-300">Make Priority Request</span>
+          </label>
+          
+          {isPriority && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">Amount:</span>
+              <select
+                value={amount}
+                onChange={(e) => setAmount(Number(e.target.value))}
+                className="bg-gray-700/50 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+              >
+                <option value={100}>₹100</option>
+                <option value={200}>₹200</option>
+                <option value={500}>₹500</option>
+                <option value={1000}>₹1000</option>
+              </select>
+            </div>
+          )}
+        </div>
+
         {videoUrl && (
           <div className="mt-4">
             <LiteYouTubeEmbed id={getVideoId(videoUrl) || ''} title="Video Preview" poster="hqdefault" />

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/lib/auth";
 import { prismaClient } from "@/app/lib/db";
 
 
 export async function GET(req: NextRequest) {
     try {
         // Get the session from the request
-        const session = await getServerSession();
+        const session = await getServerSession(authOptions);
 
         // Check if the user is authenticated
         if (!session) {
