@@ -41,10 +41,10 @@ Votetunes is a **real-time collaborative music queue** for live streamers. Your 
         ┌──────────▼───────────┐
         │   API Routes (/api)  │
         │                      │
-        │  GET  /streams       │  ← polls every 5s
-        │  POST /streams       │  ← add to queue
-        │  POST /streams/upvote│
-        │  POST /streams/downvote
+        │  GET  /streams       │  ← initial load & fallback polling
+        │  POST /streams       │  ← add to queue & triggers Pusher event
+        │  POST /streams/upvote│  ← vote up & triggers Pusher event
+        │  POST /streams/downvote  ← vote down & triggers Pusher event
         │  GET  /streams/playnext?isPriority=true|false
         │  POST /create-order  │  ← Razorpay order
         │  POST /verify-payment│  ← marks COMPLETED
@@ -101,7 +101,7 @@ PLAY NEXT (creator action or auto on song end):
 
 ### Platform
 - 🔐 **Google OAuth** via NextAuth.js
-- 🔄 **Auto-refresh** — queue polls every 5 seconds without page reload
+- 🔄 **Real-Time Sync** — instant queue updates using Pusher WebSockets (with automatic 5-second polling fallback if credentials are omitted)
 - 🎬 **Embedded YouTube player** via `yt-player` with autoplay
 - 💸 **Payments** — Razorpay checkout → server-side verification → DB update
 
@@ -128,7 +128,7 @@ If you self-host Votetunes you keep 100% of priority request revenue. A multi-te
 | Razorpay priority payments | ✅ Live |
 | Optimistic voting | ✅ Live |
 | Auto-play with priority-first logic | ✅ Live |
-| WebSocket / SSE real-time push | 🔧 Planned |
+| WebSocket / SSE real-time push | ✅ Live (via Pusher) |
 | OBS browser-source overlay | 🔧 Planned |
 | Spotify integration | 🔧 Planned |
 | Multi-tenant creator accounts | 🔧 Planned |
@@ -158,6 +158,12 @@ GOOGLE_CLIENT_SECRET="your-google-client-secret"
 
 NEXT_PUBLIC_RAZORPAY_KEY="rzp_test_xxxxxxxxxxxxx"
 RAZORPAY_KEY_SECRET="your-razorpay-secret"
+
+# Pusher Real-Time credentials (optional, falls back to polling if empty)
+PUSHER_APP_ID="your-pusher-app-id"
+NEXT_PUBLIC_PUSHER_KEY="your-pusher-key"
+PUSHER_SECRET="your-pusher-secret"
+NEXT_PUBLIC_PUSHER_CLUSTER="your-pusher-cluster"
 ```
 
 ### 3. Push the database schema

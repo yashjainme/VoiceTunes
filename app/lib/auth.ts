@@ -36,14 +36,38 @@ export const authOptions: NextAuthOptions = {
 
             return true;
         },
-        async session({ session }) {
-            if (session.user && session.user.email) {
-                const dbUser = await prismaClient.user.findUnique({
-                    where: { email: session.user.email }
-                });
-                if (dbUser) {
-                    (session.user as any).id = dbUser.id;
+        async jwt({ token, user }) {
+            // Read from DB and cache in JWT payload ONLY on initial sign-in/creation
+            if (user && user.email) {
+                try {
+                    const dbUser = await prismaClient.user.findUnique({
+                        where: { email: user.email }
+                    });
+                    if (dbUser) {
+                        token.id = dbUser.id;
+                    }
+                } catch (error) {
+                    console.error("Error fetching dbUser in jwt callback:", error);
                 }
+            } else if (!token.id && token.email) {
+                // Recover user ID for existing legacy session cookies without requiring logout/login
+                try {
+                    const dbUser = await prismaClient.user.findUnique({
+                        where: { email: token.email }
+                    });
+                    if (dbUser) {
+                        token.id = dbUser.id;
+                    }
+                } catch (error) {
+                    console.error("Error recovering dbUser in jwt callback:", error);
+                }
+            }
+            return token;
+        },
+        async session({ session, token }) {
+            // Retrieve id directly from JWT token cache without hitting database
+            if (session.user && token.id) {
+                (session.user as any).id = token.id as string;
             }
             return session;
         }

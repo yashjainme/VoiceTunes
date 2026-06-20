@@ -14,6 +14,7 @@ import { signIn, useSession } from 'next-auth/react';
 import { PriorityQueueCard, EnhancedVideoItem } from './StreamComp/PriorityQueueCard';
 import { initializePayment } from '../utils/razorpay';
 import { Tv2 } from 'lucide-react';
+import Pusher from 'pusher-js';
 
 const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false }) => {
   const { data: session, status } = useSession();
@@ -175,13 +176,44 @@ const StreamView: React.FC<StreamViewProps> = ({ creatorId, playVideo = false })
     }
   };
 
-  // ── Polling interval ─────────────────────────────────────────────────────
+  // ── Real-time event listener (Pusher) with polling fallback ──────────────
   useEffect(() => {
-    if (creatorId && status === 'authenticated') {
-      refreshStreams();
+    if (!creatorId || status !== 'authenticated') return;
+
+    // Initial load
+    refreshStreams();
+
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+
+    // Fall back to polling if environment variables are not present
+    if (!pusherKey || !pusherCluster) {
+      console.warn(
+        'Pusher client keys not configured. Falling back to HTTP polling.'
+      );
       const interval = setInterval(refreshStreams, REFRESH_INTERVAL_MS);
       return () => clearInterval(interval);
     }
+
+    // Initialize Pusher Client
+    const pusher = new Pusher(pusherKey, {
+      cluster: pusherCluster,
+    });
+
+    const channelName = `creator-${creatorId}`;
+    const channel = pusher.subscribe(channelName);
+
+    // Bind to real-time events to refresh queue status
+    channel.bind('queue-updated', (data: any) => {
+      console.log('Real-time queue update received:', data);
+      refreshStreams();
+    });
+
+    return () => {
+      channel.unbind_all();
+      pusher.unsubscribe(channelName);
+      pusher.disconnect();
+    };
   }, [creatorId, status]);
 
   // ── Loading skeleton ──────────────────────────────────────────────────────

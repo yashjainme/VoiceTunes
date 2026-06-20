@@ -65,6 +65,7 @@ import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { triggerEvent } from "@/app/lib/pusher";
 
 const UpvoteSchema = z.object({
   streamId: z.string(),
@@ -89,12 +90,28 @@ export async function POST(req: NextRequest) {
 
     const data = UpvoteSchema.parse(await req.json());
 
+    // Find the stream's owner to trigger real-time updates on their channel
+    const stream = await prismaClient.stream.findUnique({
+      where: { id: data.streamId },
+      select: { userId: true },
+    });
+
+    if (!stream) {
+      return NextResponse.json({ message: "Stream not found" }, { status: 404 });
+    }
+
     // Use transaction to ensure atomicity
     await prismaClient.$transaction([
       prismaClient.upvote.create({
         data: { userId: user.id, streamId: data.streamId },
       }),
     ]);
+
+    // Trigger real-time update to notify creator and audience
+    await triggerEvent(`creator-${stream.userId}`, "queue-updated", {
+      action: "upvote",
+      streamId: data.streamId,
+    });
 
     return NextResponse.json({ message: "Upvote added successfully!" });
   } catch (error) {
