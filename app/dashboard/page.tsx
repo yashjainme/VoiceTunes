@@ -199,7 +199,7 @@ export default function CreatorDashboard() {
             <span className="text-gray-200">
               {session.user?.name ?? session.user?.email}
             </span>
-            ! Here's your stream at a glance.
+            ! Here&apos;s your stream at a glance.
           </p>
         </div>
 

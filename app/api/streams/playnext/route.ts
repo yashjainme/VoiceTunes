@@ -2,6 +2,7 @@ import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { triggerEvent } from "@/app/lib/pusher";
 
 export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions);
@@ -89,6 +90,12 @@ export async function GET(req: NextRequest) {
                 where: { id: nextStream.id },
             }),
         ]);
+
+        // Trigger real-time update to notify creator and audience
+        await triggerEvent(`creator-${userWithNextStream.id}`, "queue-updated", {
+            action: "play-next",
+            streamId: nextStream.id,
+        });
 
         return NextResponse.json({ stream: nextStream }, { status: 200 });
     } catch (error) {

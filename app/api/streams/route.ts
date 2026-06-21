@@ -11,6 +11,7 @@ import youtubesearchapi from 'youtube-search-api'
 import { YT_REGEX } from "@/app/lib/utils";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
+import { triggerEvent } from "@/app/lib/pusher";
 
 // Move schema outside of function to avoid recreation on each request
 const CreateStreamSchema = z.object({
@@ -66,6 +67,12 @@ export async function POST(req: NextRequest) {
                 smallImg,
                 bigImg
             },
+        });
+
+        // Trigger real-time update to notify creator and audience
+        await triggerEvent(`creator-${data.creatorId}`, "queue-updated", {
+            action: "add-stream",
+            streamId: stream.id,
         });
 
         return NextResponse.json({ 

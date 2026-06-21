@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
 import { prismaClient } from "@/app/lib/db";
+import { triggerEvent } from "@/app/lib/pusher";
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,6 +38,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "User not found in database" }, { status: 404 });
     }
 
+    // Get the stream to find the owner/creator
+    const stream = await prismaClient.stream.findUnique({
+      where: { id: videoId },
+      select: { userId: true },
+    });
+
+    if (!stream) {
+      return NextResponse.json({ message: "Stream not found" }, { status: 404 });
+    }
+
     // Create the payment record with COMPLETED status
     await prismaClient.payment.create({
       data: {
@@ -47,6 +58,12 @@ export async function POST(req: NextRequest) {
         streamId: videoId,
         userId: dbUser.id,
       },
+    });
+
+    // Trigger real-time update to notify creator and audience
+    await triggerEvent(`creator-${stream.userId}`, "queue-updated", {
+      action: "payment-completed",
+      streamId: videoId,
     });
 
     return NextResponse.json({ success: true, message: "Payment verified and recorded" });
